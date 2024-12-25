@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sniper 3D zallkaltim</title>
+    <title>Sniper 3D: Mission and Base</title>
     <style>
         body {
             margin: 0;
@@ -32,7 +32,7 @@
             border-radius: 50%;
             transform: translate(-50%, -50%);
         }
-        #score, #timer, #lives {
+        #score, #timer, #lives, #mission-status, #level, #balance {
             position: absolute;
             font-size: 20px;
         }
@@ -48,6 +48,62 @@
             bottom: 10px;
             left: 10px;
         }
+        #mission-status {
+            top: 40px;
+            left: 10px;
+        }
+        #level {
+            top: 70px;
+            left: 10px;
+        }
+        #balance {
+            top: 100px;
+            left: 10px;
+        }
+        /* Game Over Panel */
+        #game-over-panel {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            color: white;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+        }
+        #game-over-panel button {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #ad-popup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            color: white;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+        }
+        #ad-popup button {
+            padding: 10px;
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -56,163 +112,115 @@
         <div id="score">Score: 0</div>
         <div id="timer">Time: 60</div>
         <div id="lives">Lives: 3</div>
+        <div id="mission-status">Mission: Kill 20 enemies</div>
+        <div id="level">Level: 1</div>
+        <div id="balance">Balance: $0</div>
     </div>
+
+    <!-- Game Over Panel -->
+    <div id="game-over-panel">
+        <h3>Game Over</h3>
+        <button id="resume-button">Resume</button>
+        <button id="restart-button">Restart</button>
+    </div>
+
+    <!-- Ad Popup -->
+    <div id="ad-popup">
+        <h3>Watch this ad to continue</h3>
+        <button id="close-ad">Close</button>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        // Setup scene, camera, and renderer
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+        let scene, camera, renderer, score = 0, timer = 60, lives = 3, gameOver = false;
+        let enemiesKilled = 0, missionStatus = "Kill 20 enemies", level = 1, mapType = 'ship', balance = 0;
+        let weapons = ['Shotgun', 'AWM', 'Barrett', 'Pistol'], equippedWeapon = 'Pistol';
 
-        // Add lighting
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(5, 5, 5).normalize();
-        scene.add(light);
+        // Initialize basic game objects
+        function initGame() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
 
-        // Load textures
-        const textureLoader = new THREE.TextureLoader();
-        const targetTexture = textureLoader.load('https://threejs.org/examples/textures/crate.gif'); // Replace with your texture
-        const groundTexture = textureLoader.load('https://threejs.org/examples/textures/grasslight-big.jpg');
-        groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
-        groundTexture.repeat.set(10, 10);
+            // Set up scene and map
+            loadMap(mapType);
 
-        // Create a target object
-        const targets = [];
-        const targetGeometry = new THREE.SphereGeometry(0.5, 32, 32);
-        const targetMaterial = new THREE.MeshStandardMaterial({ map: targetTexture });
+            // Set up HUD
+            document.getElementById('score').innerHTML = 'Score: ' + score;
+            document.getElementById('timer').innerHTML = 'Time: ' + timer;
+            document.getElementById('lives').innerHTML = 'Lives: ' + lives;
+            document.getElementById('mission-status').innerHTML = 'Mission: ' + missionStatus;
+            document.getElementById('level').innerHTML = 'Level: ' + level;
+            document.getElementById('balance').innerHTML = 'Balance: $' + balance;
 
-        function spawnTarget() {
-            const target = new THREE.Mesh(targetGeometry, targetMaterial);
-            target.position.set(
-                (Math.random() - 0.5) * 10,
-                (Math.random() - 0.5) * 10,
-                -10 - Math.random() * 20
-            );
-            scene.add(target);
-            targets.push(target);
-        }
+            // Show ads every 2 minutes
+            setInterval(showAd, 120000); // 2 minutes = 120,000 ms
 
-        // Spawn initial targets
-        for (let i = 0; i < 5; i++) {
-            spawnTarget();
-        }
-
-        // Add ground plane
-        const planeGeometry = new THREE.PlaneGeometry(100, 100);
-        const planeMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
-        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-        plane.rotation.x = -Math.PI / 2;
-        scene.add(plane);
-
-        // Set camera position
-        camera.position.z = 5;
-
-        // HUD elements
-        const scoreDisplay = document.getElementById('score');
-        const timerDisplay = document.getElementById('timer');
-        const livesDisplay = document.getElementById('lives');
-        let score = 0;
-        let timer = 60;
-        let lives = 3;
-
-        // Raycaster for shooting
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-
-        // Shooting sound
-        const shootSound = new Audio('https://www.soundjay.com/button/beep-07.wav');
-        const hitSound = new Audio('https://www.soundjay.com/button/button-3.wav');
-
-        // Shooting mechanic
-        window.addEventListener('click', () => {
-            shootSound.play();
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(targets);
-
-            if (intersects.length > 0) {
-                const target = intersects[0].object;
-                hitSound.play();
-                scene.remove(target);
-                targets.splice(targets.indexOf(target), 1);
-                score += 10;
-                scoreDisplay.textContent = `Score: ${score}`;
-                spawnTarget();
+            // Update game loop
+            function animate() {
+                if (gameOver) return;  // Stop the animation if game is over
+                requestAnimationFrame(animate);
+                renderer.render(scene, camera);
             }
-        });
-
-        // Bullet animation
-        function animateBullet() {
-            const bulletGeometry = new THREE.SphereGeometry(0.1, 16, 16);
-            const bulletMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 });
-            const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
-            bullet.position.copy(camera.position);
-            scene.add(bullet);
-
-            const targetPosition = new THREE.Vector3(mouse.x * 10, mouse.y * 10, -10);
-            const bulletSpeed = 0.5;
-
-            function moveBullet() {
-                bullet.position.lerp(targetPosition, bulletSpeed);
-                if (bullet.position.distanceTo(targetPosition) < 0.1) {
-                    scene.remove(bullet);
-                } else {
-                    requestAnimationFrame(moveBullet);
-                }
-            }
-            moveBullet();
+            animate();
         }
 
-        window.addEventListener('click', animateBullet);
+        // Show ad popup every 2 minutes
+        function showAd() {
+            document.getElementById('ad-popup').style.display = 'block';
+        }
 
-        // Timer and lives
-        function updateTimer() {
-            timer--;
-            timerDisplay.textContent = `Time: ${timer}`;
-            if (timer <= 0) {
-                alert('Game Over! Your score: ' + score);
-                location.reload();
+        // Close ad and resume game
+        document.getElementById('close-ad').onclick = function() {
+            document.getElementById('ad-popup').style.display = 'none';
+        };
+
+        // Load different map based on selected type
+        function loadMap(type) {
+            scene.clear();  // Clear previous map objects
+
+            if (type === 'ship') {
+                loadShipMap();
+            } else if (type === 'airplane') {
+                loadAirplaneMap();
+            } else if (type === 'forest') {
+                loadForestMap();
             }
         }
-        setInterval(updateTimer, 1000);
 
-        function checkLives() {
-            targets.forEach((target) => {
-                if (target.position.z > 5) {
-                    scene.remove(target);
-                    targets.splice(targets.indexOf(target), 1);
-                    lives--;
-                    livesDisplay.textContent = `Lives: ${lives}`;
-                    spawnTarget();
-                }
-            });
+        // Ship map (shooting sharks)
+        function loadShipMap() {
+            // Add code to load ship map and enemies
+        }
 
-            if (lives <= 0) {
-                alert('Game Over! Your score: ' + score);
-                location.reload();
+        // Increase level when mission is completed
+        function completeMission() {
+            score += 100;  // Award points for completing a mission
+            balance += 10; // Add $10 to balance for completing the mission
+            enemiesKilled = 0;
+            level++;  // Increase level
+            missionStatus = "Kill 20 enemies";  // Reset mission
+            document.getElementById('level').innerHTML = 'Level: ' + level;
+            document.getElementById('balance').innerHTML = 'Balance: $' + balance;
+            loadMap(mapType);  // Reload map with increased difficulty
+        }
+
+        // Select weapon based on points
+        function buyWeapon(weaponIndex) {
+            if (balance >= 10) { // Weapon price is $10
+                equippedWeapon = weapons[weaponIndex];
+                balance -= 10;
+                document.getElementById('balance').innerHTML = 'Balance: $' + balance;
+                console.log('Weapon equipped: ' + equippedWeapon);
+            } else {
+                alert('Not enough balance to buy weapon!');
             }
         }
-        setInterval(checkLives, 100);
 
-        // Game loop
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // Move targets closer
-            targets.forEach((target) => {
-                target.position.z += 0.1;
-            });
-
-            renderer.render(scene, camera);
-        }
-        animate();
-
-        // Update mouse position
-        window.addEventListener('mousemove', (event) => {
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-        });
+        // Initialize the game
+        initGame();
     </script>
 </body>
 </html>
