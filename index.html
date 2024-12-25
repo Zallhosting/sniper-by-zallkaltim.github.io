@@ -9,17 +9,14 @@
             margin: 0;
             overflow: hidden;
             background: black;
-            font-family: Arial, sans-serif;
         }
-        #game-overlay {
+        #scoreboard {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            pointer-events: none;
+            top: 10px;
+            left: 10px;
             color: white;
-            text-align: center;
+            font-size: 20px;
+            z-index: 10;
         }
         #crosshair {
             position: absolute;
@@ -32,111 +29,23 @@
             border-radius: 50%;
             transform: translate(-50%, -50%);
         }
-        #score, #timer, #lives, #mission-status, #level, #balance {
-            position: absolute;
-            font-size: 20px;
-        }
-        #score {
-            top: 10px;
-            left: 10px;
-        }
-        #timer {
-            top: 10px;
-            right: 10px;
-        }
-        #lives {
-            bottom: 10px;
-            left: 10px;
-        }
-        #mission-status {
-            top: 40px;
-            left: 10px;
-        }
-        #level {
-            top: 70px;
-            left: 10px;
-        }
-        #balance {
-            top: 100px;
-            left: 10px;
-        }
-        /* Game Over Panel */
-        #game-over-panel {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.8);
-            padding: 20px;
-            color: white;
-            border-radius: 10px;
-            text-align: center;
-            display: none;
-        }
-        #game-over-panel button {
-            margin-top: 10px;
-            padding: 10px;
-            background-color: #4CAF50;
-            border: none;
-            color: white;
-            font-size: 16px;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        #ad-popup {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.8);
-            padding: 20px;
-            color: white;
-            border-radius: 10px;
-            text-align: center;
-            display: none;
-        }
-        #ad-popup button {
-            padding: 10px;
-            background-color: #4CAF50;
-            border: none;
-            color: white;
-            font-size: 16px;
-            border-radius: 5px;
-            cursor: pointer;
-        }
     </style>
 </head>
 <body>
-    <div id="game-overlay">
-        <div id="crosshair"></div>
-        <div id="score">Score: 0</div>
-        <div id="timer">Time: 60</div>
-        <div id="lives">Lives: 3</div>
-        <div id="mission-status">Mission: Kill 20 enemies</div>
-        <div id="level">Level: 1</div>
-        <div id="balance">Balance: $0</div>
+    <div id="scoreboard">
+        <p id="score">Score: 0</p>
+        <p id="timer">Time: 60</p>
+        <p id="lives">Lives: 3</p>
     </div>
-
-    <!-- Game Over Panel -->
-    <div id="game-over-panel">
-        <h3>Game Over</h3>
-        <button id="resume-button">Resume</button>
-        <button id="restart-button">Restart</button>
-    </div>
-
-    <!-- Ad Popup -->
-    <div id="ad-popup">
-        <h3>Watch this ad to continue</h3>
-        <button id="close-ad">Close</button>
-    </div>
+    <div id="crosshair"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        let scene, camera, renderer, score = 0, timer = 60, lives = 3, gameOver = false;
-        let enemiesKilled = 0, missionStatus = "Kill 20 enemies", level = 1, mapType = 'ship', balance = 0;
-        let weapons = ['Shotgun', 'AWM', 'Barrett', 'Pistol'], equippedWeapon = 'Pistol';
-
-        // Initialize basic game objects
+        let scene, camera, renderer, clock, player, enemies = [], bullets = [], score = 0, lives = 3, timer = 60, level = 1, weapon = 'Pistol';
+        let lastTime = Date.now();
+        let bulletSpeed = 0.5;
+        
+        // Initialize game
         function initGame() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -144,82 +53,138 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // Set up scene and map
-            loadMap(mapType);
+            // Setup ground
+            const groundGeometry = new THREE.PlaneGeometry(200, 200);
+            const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x228B22, side: THREE.DoubleSide });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = Math.PI / 2;
+            scene.add(ground);
 
-            // Set up HUD
-            document.getElementById('score').innerHTML = 'Score: ' + score;
-            document.getElementById('timer').innerHTML = 'Time: ' + timer;
-            document.getElementById('lives').innerHTML = 'Lives: ' + lives;
-            document.getElementById('mission-status').innerHTML = 'Mission: ' + missionStatus;
-            document.getElementById('level').innerHTML = 'Level: ' + level;
-            document.getElementById('balance').innerHTML = 'Balance: $' + balance;
+            // Setup simple player (sphere as player)
+            const playerGeometry = new THREE.SphereGeometry(1, 32, 32);
+            const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+            player = new THREE.Mesh(playerGeometry, playerMaterial);
+            player.position.set(0, 1, 0);
+            scene.add(player);
 
-            // Show ads every 2 minutes
-            setInterval(showAd, 120000); // 2 minutes = 120,000 ms
-
-            // Update game loop
-            function animate() {
-                if (gameOver) return;  // Stop the animation if game is over
-                requestAnimationFrame(animate);
-                renderer.render(scene, camera);
+            // Setup enemies (dinosaurs)
+            for (let i = 0; i < 5; i++) {
+                const enemyGeometry = new THREE.BoxGeometry(3, 3, 3);
+                const enemyMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
+                enemy.position.set(Math.random() * 50 - 25, 1, Math.random() * 50 - 25);
+                scene.add(enemy);
+                enemies.push(enemy);
             }
+
+            // Setup lighting
+            const light = new THREE.PointLight(0xffffff, 1, 100);
+            light.position.set(0, 10, 0);
+            scene.add(light);
+
+            // Setup camera
+            camera.position.z = 10;
+
+            // Game clock
+            clock = new THREE.Clock();
+
+            // Start animation loop
             animate();
         }
 
-        // Show ad popup every 2 minutes
-        function showAd() {
-            document.getElementById('ad-popup').style.display = 'block';
-        }
+        // Animate the game scene
+        function animate() {
+            requestAnimationFrame(animate);
 
-        // Close ad and resume game
-        document.getElementById('close-ad').onclick = function() {
-            document.getElementById('ad-popup').style.display = 'none';
-        };
-
-        // Load different map based on selected type
-        function loadMap(type) {
-            scene.clear();  // Clear previous map objects
-
-            if (type === 'ship') {
-                loadShipMap();
-            } else if (type === 'airplane') {
-                loadAirplaneMap();
-            } else if (type === 'forest') {
-                loadForestMap();
+            // Update timer every second
+            if (Date.now() - lastTime > 1000) {
+                timer--;
+                lastTime = Date.now();
+                document.getElementById('timer').innerText = 'Time: ' + timer;
+                if (timer <= 0) {
+                    alert('Time is up! Game Over');
+                    resetGame();
+                }
             }
+
+            // Update enemies
+            enemies.forEach((enemy, index) => {
+                const enemySpeed = 0.05;
+                enemy.position.x += (player.position.x - enemy.position.x) * enemySpeed;
+                enemy.position.z += (player.position.z - enemy.position.z) * enemySpeed;
+
+                // Check collision with bullets
+                bullets.forEach((bullet, bulletIndex) => {
+                    if (bullet && bullet.position.distanceTo(enemy.position) < 2) {
+                        score += 10;
+                        document.getElementById('score').innerText = 'Score: ' + score;
+                        enemies.splice(index, 1);
+                        scene.remove(enemy);
+                        bullets.splice(bulletIndex, 1);
+                        scene.remove(bullet);
+                    }
+                });
+            });
+
+            // Update player position with keyboard input
+            const delta = clock.getDelta();
+            const speed = 5;
+            if (keyPressed('ArrowUp')) player.position.z -= speed * delta;
+            if (keyPressed('ArrowDown')) player.position.z += speed * delta;
+            if (keyPressed('ArrowLeft')) player.position.x -= speed * delta;
+            if (keyPressed('ArrowRight')) player.position.x += speed * delta;
+
+            // Render the scene
+            renderer.render(scene, camera);
         }
 
-        // Ship map (shooting sharks)
-        function loadShipMap() {
-            // Add code to load ship map and enemies
+        // Track keypresses (for movement)
+        let keys = {};
+        function keyPressed(key) {
+            return keys[key] || false;
         }
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
 
-        // Increase level when mission is completed
-        function completeMission() {
-            score += 100;  // Award points for completing a mission
-            balance += 10; // Add $10 to balance for completing the mission
-            enemiesKilled = 0;
-            level++;  // Increase level
-            missionStatus = "Kill 20 enemies";  // Reset mission
-            document.getElementById('level').innerHTML = 'Level: ' + level;
-            document.getElementById('balance').innerHTML = 'Balance: $' + balance;
-            loadMap(mapType);  // Reload map with increased difficulty
-        }
+        // Fire a bullet
+        window.addEventListener('click', () => {
+            const bulletGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+            const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+            bullet.position.set(player.position.x, player.position.y, player.position.z);
+            scene.add(bullet);
+            bullets.push(bullet);
 
-        // Select weapon based on points
-        function buyWeapon(weaponIndex) {
-            if (balance >= 10) { // Weapon price is $10
-                equippedWeapon = weapons[weaponIndex];
-                balance -= 10;
-                document.getElementById('balance').innerHTML = 'Balance: $' + balance;
-                console.log('Weapon equipped: ' + equippedWeapon);
-            } else {
-                alert('Not enough balance to buy weapon!');
+            // Bullet motion
+            function moveBullet() {
+                if (bullet.position.z > 0) {
+                    bullet.position.z += bulletSpeed;
+                    requestAnimationFrame(moveBullet);
+                } else {
+                    scene.remove(bullet);
+                    bullets = bullets.filter(b => b !== bullet);
+                }
             }
+            moveBullet();
+        });
+
+        // Reset game (restart)
+        function resetGame() {
+            score = 0;
+            timer = 60;
+            lives = 3;
+            enemies.forEach(enemy => scene.remove(enemy));
+            enemies = [];
+            bullets.forEach(bullet => scene.remove(bullet));
+            bullets = [];
+            initGame();
         }
 
-        // Initialize the game
+        // Initialize game
         initGame();
     </script>
 </body>
