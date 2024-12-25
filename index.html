@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sniper 3D: Mission and Base</title>
+    <title>Battle Royale Prototype</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background: black;
+            background-color: #4CAF50;
         }
         #scoreboard {
             position: absolute;
@@ -34,18 +34,17 @@
 <body>
     <div id="scoreboard">
         <p id="score">Score: 0</p>
-        <p id="timer">Time: 60</p>
         <p id="lives">Lives: 3</p>
     </div>
     <div id="crosshair"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        let scene, camera, renderer, clock, player, enemies = [], bullets = [], score = 0, lives = 3, timer = 60, level = 1, weapon = 'Pistol';
-        let lastTime = Date.now();
-        let bulletSpeed = 0.5;
-        
-        // Initialize game
+        let scene, camera, renderer, player, enemies = [], bullets = [], score = 0, lives = 3;
+        let bulletSpeed = 0.5, enemySpeed = 0.05;
+        let keys = {}, crosshair = document.getElementById('crosshair');
+
+        // Initialize the game scene
         function initGame() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -53,96 +52,87 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // Setup ground
+            // Ground (Battlefield)
             const groundGeometry = new THREE.PlaneGeometry(200, 200);
-            const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x228B22, side: THREE.DoubleSide });
+            const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x00FF00, side: THREE.DoubleSide });
             const ground = new THREE.Mesh(groundGeometry, groundMaterial);
             ground.rotation.x = Math.PI / 2;
             scene.add(ground);
 
-            // Setup simple player (sphere as player)
-            const playerGeometry = new THREE.SphereGeometry(1, 32, 32);
-            const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+            // Player (represented as a cube)
+            const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
+            const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x0000FF });
             player = new THREE.Mesh(playerGeometry, playerMaterial);
             player.position.set(0, 1, 0);
             scene.add(player);
 
-            // Setup enemies (dinosaurs)
+            // Enemies (represented as simple cubes)
             for (let i = 0; i < 5; i++) {
-                const enemyGeometry = new THREE.BoxGeometry(3, 3, 3);
-                const enemyMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const enemyGeometry = new THREE.BoxGeometry(2, 2, 2);
+                const enemyMaterial = new THREE.MeshBasicMaterial({ color: 0xFF0000 });
                 const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
                 enemy.position.set(Math.random() * 50 - 25, 1, Math.random() * 50 - 25);
                 scene.add(enemy);
                 enemies.push(enemy);
             }
 
-            // Setup lighting
-            const light = new THREE.PointLight(0xffffff, 1, 100);
-            light.position.set(0, 10, 0);
+            // Lighting
+            const light = new THREE.PointLight(0xFFFFFF, 1, 100);
+            light.position.set(10, 10, 10);
             scene.add(light);
 
-            // Setup camera
+            // Camera
             camera.position.z = 10;
 
-            // Game clock
-            clock = new THREE.Clock();
-
-            // Start animation loop
+            // Game loop
             animate();
         }
 
-        // Animate the game scene
+        // Animate and update the game scene
         function animate() {
             requestAnimationFrame(animate);
 
-            // Update timer every second
-            if (Date.now() - lastTime > 1000) {
-                timer--;
-                lastTime = Date.now();
-                document.getElementById('timer').innerText = 'Time: ' + timer;
-                if (timer <= 0) {
-                    alert('Time is up! Game Over');
-                    resetGame();
-                }
-            }
+            // Player movement based on keypress
+            const delta = 0.1;
+            if (keys['ArrowUp']) player.position.z -= delta;
+            if (keys['ArrowDown']) player.position.z += delta;
+            if (keys['ArrowLeft']) player.position.x -= delta;
+            if (keys['ArrowRight']) player.position.x += delta;
 
-            // Update enemies
-            enemies.forEach((enemy, index) => {
-                const enemySpeed = 0.05;
+            // Enemy movement towards the player
+            enemies.forEach(enemy => {
                 enemy.position.x += (player.position.x - enemy.position.x) * enemySpeed;
                 enemy.position.z += (player.position.z - enemy.position.z) * enemySpeed;
+            });
 
-                // Check collision with bullets
-                bullets.forEach((bullet, bulletIndex) => {
-                    if (bullet && bullet.position.distanceTo(enemy.position) < 2) {
+            // Bullet movement
+            bullets.forEach(bullet => {
+                bullet.position.z += bulletSpeed;
+                if (bullet.position.z > 100) {
+                    scene.remove(bullet);
+                    bullets = bullets.filter(b => b !== bullet);
+                }
+            });
+
+            // Check collision between bullets and enemies
+            bullets.forEach(bullet => {
+                enemies.forEach((enemy, index) => {
+                    if (bullet.position.distanceTo(enemy.position) < 3) {
                         score += 10;
                         document.getElementById('score').innerText = 'Score: ' + score;
                         enemies.splice(index, 1);
                         scene.remove(enemy);
-                        bullets.splice(bulletIndex, 1);
+                        bullets.splice(bullets.indexOf(bullet), 1);
                         scene.remove(bullet);
                     }
                 });
             });
 
-            // Update player position with keyboard input
-            const delta = clock.getDelta();
-            const speed = 5;
-            if (keyPressed('ArrowUp')) player.position.z -= speed * delta;
-            if (keyPressed('ArrowDown')) player.position.z += speed * delta;
-            if (keyPressed('ArrowLeft')) player.position.x -= speed * delta;
-            if (keyPressed('ArrowRight')) player.position.x += speed * delta;
-
-            // Render the scene
+            // Render scene
             renderer.render(scene, camera);
         }
 
-        // Track keypresses (for movement)
-        let keys = {};
-        function keyPressed(key) {
-            return keys[key] || false;
-        }
+        // Track keypresses for movement
         window.addEventListener('keydown', (e) => {
             keys[e.key] = true;
         });
@@ -150,41 +140,25 @@
             keys[e.key] = false;
         });
 
-        // Fire a bullet
+        // Shooting functionality
         window.addEventListener('click', () => {
             const bulletGeometry = new THREE.SphereGeometry(0.2, 8, 8);
-            const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFF00 });
             const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
             bullet.position.set(player.position.x, player.position.y, player.position.z);
             scene.add(bullet);
             bullets.push(bullet);
-
-            // Bullet motion
-            function moveBullet() {
-                if (bullet.position.z > 0) {
-                    bullet.position.z += bulletSpeed;
-                    requestAnimationFrame(moveBullet);
-                } else {
-                    scene.remove(bullet);
-                    bullets = bullets.filter(b => b !== bullet);
-                }
-            }
-            moveBullet();
         });
 
-        // Reset game (restart)
-        function resetGame() {
-            score = 0;
-            timer = 60;
-            lives = 3;
-            enemies.forEach(enemy => scene.remove(enemy));
-            enemies = [];
-            bullets.forEach(bullet => scene.remove(bullet));
-            bullets = [];
-            initGame();
-        }
+        // Crosshair update for mouse movement
+        window.addEventListener('mousemove', (e) => {
+            const x = (e.clientX / window.innerWidth) * 2 - 1;
+            const y = -(e.clientY / window.innerHeight) * 2 + 1;
+            crosshair.style.left = (x * 50 + 50) + '%';
+            crosshair.style.top = (y * 50 + 50) + '%';
+        });
 
-        // Initialize game
+        // Start the game
         initGame();
     </script>
 </body>
